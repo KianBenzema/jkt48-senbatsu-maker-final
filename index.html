@@ -286,6 +286,35 @@
         .export-mode .stage-gradient {
             padding-top: 24px !important;
         }
+
+        /* SEARCH WRAP */
+        .search-wrap {
+            position: relative;
+        }
+
+        .clear-search-btn {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            background: #f2f2f2;
+            color: #777;
+            font-weight: 900;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.15s ease;
+        }
+
+        .clear-search-btn:hover {
+            background: #eaeaea;
+            color: #E81C24;
+        }
     </style>
 </head>
 
@@ -342,7 +371,23 @@
             <div id="counter"
                 class="bg-jkt-dark text-white px-4 py-2 rounded-full font-black text-[11px] tracking-tight">0 / 16</div>
         </header>
+
+        <!-- SEARCH + UNDO INLINE -->
+        <div class="flex gap-2 mb-6 items-center">
+            <div class="search-wrap flex-1">
+                <input type="text" id="search-member" placeholder="Search Member..."
+                    class="w-full bg-white border border-gray-200 px-5 py-3 rounded-full outline-none font-bold text-[12px] shadow-sm pr-14">
+                <div id="clear-search" class="clear-search-btn hidden">✕</div>
+            </div>
+
+            <button onclick="undoSelection()"
+                class="bg-white border border-gray-200 text-gray-500 px-6 py-3 rounded-full font-black uppercase tracking-[0.18em] text-[10px] shadow-sm hover:text-jkt-red hover:border-red-200 whitespace-nowrap">
+                Undo
+            </button>
+        </div>
+
         <div id="member-list" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5"></div>
+
         <div class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[94%] max-w-4xl z-50">
             <div class="glass-card p-2.5 rounded-[2rem] flex flex-col sm:flex-row gap-2.5 shadow-xl">
                 <input type="text" id="user-name-input" placeholder="Your Name"
@@ -402,6 +447,9 @@
         let selectedMembers = [];
         let layoutMode = "zigzag";
 
+        let selectionHistory = [];
+        let currentFilteredList = [];
+
         const memberNames = [
             "Abigail Rachel", "Adeline Wijaya", "Afera Thalia", "Alya Amanda", "Angelina Christy", "Anindya Ramadhani",
             "Astrella Virgiananda", "Aulia Riza", "Aurellia", "Aurhel Alana", "Bong Aprilli", "Carissa Dini",
@@ -417,6 +465,18 @@
             "Ribka Budiman", "Shabilqis Naila", "Sona Kalyana", "Victoria Kimberly"
         ].sort();
 
+        function pushHistory() {
+            selectionHistory.push([...selectedMembers]);
+            if (selectionHistory.length > 100) selectionHistory.shift();
+        }
+
+        function undoSelection() {
+            if (selectionHistory.length === 0) return;
+            selectedMembers = selectionHistory.pop();
+            renderMembers(currentFilteredList);
+            updateCounter();
+        }
+
         function changeSize(val) {
             senbatsuSize = Math.max(1, Math.min(memberNames.length, senbatsuSize + val));
             document.getElementById('senbatsu-count').innerText = senbatsuSize;
@@ -426,12 +486,28 @@
         function goToStep2() {
             document.getElementById('step-1').style.display = 'none';
             document.getElementById('step-2').classList.remove('hidden');
-            renderMembers();
+
+            currentFilteredList = memberNames;
+            renderMembers(memberNames);
         }
 
-        function renderMembers() {
+        function renderMembers(filteredList = memberNames) {
+            currentFilteredList = filteredList;
+
             const container = document.getElementById('member-list');
-            container.innerHTML = memberNames.map(name => {
+
+            if (filteredList.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-10">
+                        <p class="text-gray-400 font-black text-sm uppercase tracking-widest">
+                            Member Not Found
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filteredList.map(name => {
                 const idx = selectedMembers.indexOf(name);
                 const isSelected = idx > -1;
                 const isDisabled = selectedMembers.length >= senbatsuSize && !isSelected;
@@ -449,10 +525,13 @@
         }
 
         function toggleMember(name) {
+            pushHistory();
+
             const idx = selectedMembers.indexOf(name);
             if (idx > -1) selectedMembers.splice(idx, 1);
             else if (selectedMembers.length < senbatsuSize) selectedMembers.push(name);
-            renderMembers();
+
+            renderMembers(currentFilteredList);
             updateCounter();
         }
 
@@ -494,7 +573,6 @@
             buildPyramid();
         }
 
-
         function buildPyramid() {
             const container = document.getElementById('pyramid-container');
             container.innerHTML = '';
@@ -526,9 +604,6 @@
 
             const isMobile = window.innerWidth <= 640;
 
-            /* =======================
-               MOBILE: MAX ROW CONTROL
-            ======================= */
             if (isMobile) {
 
                 let maxPerRow = 4;
@@ -608,9 +683,6 @@
                 return;
             }
 
-            /* =======================
-               DESKTOP: PYRAMID STRICT
-            ======================= */
             let remaining = membersCopy.length;
             let rowSizes = [];
 
@@ -732,6 +804,7 @@
                 buildPyramid();
             }
         });
+
         function downloadImage() {
             const btn = document.getElementById('btn-download');
             btn.innerText = "GENERATING...";
@@ -757,6 +830,42 @@
                 });
             }, 200);
         }
+
+        /* =======================
+           LIVE SEARCH + CLEAR BTN
+        ======================= */
+        document.addEventListener("DOMContentLoaded", () => {
+            const searchInput = document.getElementById("search-member");
+            const clearBtn = document.getElementById("clear-search");
+
+            if (searchInput) {
+                searchInput.addEventListener("input", () => {
+                    const keyword = searchInput.value.trim().toLowerCase();
+
+                    if (keyword.length > 0) clearBtn.classList.remove("hidden");
+                    else clearBtn.classList.add("hidden");
+
+                    if (keyword === "") {
+                        renderMembers(memberNames);
+                        return;
+                    }
+
+                    const filtered = memberNames.filter(name =>
+                        name.toLowerCase().includes(keyword)
+                    );
+
+                    renderMembers(filtered);
+                });
+            }
+
+            if (clearBtn) {
+                clearBtn.addEventListener("click", () => {
+                    searchInput.value = "";
+                    clearBtn.classList.add("hidden");
+                    renderMembers(memberNames);
+                });
+            }
+        });
     </script>
 </body>
 
